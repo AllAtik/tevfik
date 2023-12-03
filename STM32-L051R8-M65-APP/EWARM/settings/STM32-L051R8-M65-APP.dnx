@@ -1,0 +1,89 @@
+<?xml version="1.0"?>
+<settings>
+    <Stack>
+        <FillEnabled>0</FillEnabled>
+        <OverflowWarningsEnabled>1</OverflowWarningsEnabled>
+        <WarningThreshold>90</WarningThreshold>
+        <SpWarningsEnabled>1</SpWarningsEnabled>
+        <WarnLogOnly>1</WarnLogOnly>
+        <UseTrigger>1</UseTrigger>
+        <TriggerName>main</TriggerName>
+        <LimitSize>0</LimitSize>
+        <ByteLimit>50</ByteLimit>
+    </Stack>
+    <PlDriver>
+        <FirstRun>0</FirstRun>
+        <MemConfigValue>C:\Program Files\IAR Systems\Embedded Workbench 9.1\arm\CONFIG\debugger\ST\STM32L051R8.ddf</MemConfigValue>
+    </PlDriver>
+    <ArmDriver>
+        <EnableCache>0</EnableCache>
+        <EnforceMemoryConfiguration>1</EnforceMemoryConfiguration>
+    </ArmDriver>
+    <StLinkDriver>
+        <stlinkserialNo>066DFF555256824887153816</stlinkserialNo>
+        <stlinkfoundProbes />
+        <stlinkResetStyle>0</stlinkResetStyle>
+        <stlinkResetStrategy>2</stlinkResetStrategy>
+        <LeaveTargetRunning>_ 0</LeaveTargetRunning>
+        <CStepIntDis>_ 0</CStepIntDis>
+    </StLinkDriver>
+    <DebugChecksum>
+        <Checksum>3169923430</Checksum>
+    </DebugChecksum>
+    <Exceptions>
+        <StopOnUncaught>_ 0</StopOnUncaught>
+        <StopOnThrow>_ 0</StopOnThrow>
+    </Exceptions>
+    <Disassembly>
+        <MixedMode>1</MixedMode>
+    </Disassembly>
+    <Trace1>
+        <Enabled>0</Enabled>
+        <ShowSource>1</ShowSource>
+    </Trace1>
+    <CallStack>
+        <ShowArgs>0</ShowArgs>
+    </CallStack>
+    <struct_types>
+        <Fmt0>S_SENSOR_ALL_VALUES-alarmeventgroup	1	0</Fmt0>
+        <Fmt1>S_SENSOR_ALL_VALUES-batteryvoltagepercentage	3	0</Fmt1>
+        <Fmt2>S_SENSOR_ALL_VALUES-halleffectalarmstatus	1	0</Fmt2>
+        <Fmt3>S_DEVICE_NVS_INFO-crc	3	0</Fmt3>
+        <Fmt4>S_DEVICE_NVS_INFO-depthAlarmLimit	3	0</Fmt4>
+        <Fmt5>S_DEVICE_NVS_INFO-enterFireAlarmValue	3	0</Fmt5>
+        <Fmt6>S_DEVICE_NVS_INFO-exitFireAlarmValue	3	0</Fmt6>
+        <Fmt7>S_DEVICE_NVS_INFO-fullAlarmLimit	3	0</Fmt7>
+        <Fmt8>S_DEVICE_NVS_INFO-fullnessAlarmLimit	3	0</Fmt8>
+        <Fmt9>S_DEVICE_NVS_INFO-sendingDataInterval	3	0</Fmt9>
+        <Fmt10>S_DEVICE_NVS_INFO-toleranceValue	3	0</Fmt10>
+    </struct_types>
+    <watch_formats>
+        <Fmt0>{W}42:fullnessLimitExdeed	3	0</Fmt0>
+        <Fmt1>{W}42:m_AlarmGroupBits	3	0</Fmt1>
+        <Fmt2>{W}42:m_BatteryVoltagePercentage	3	0</Fmt2>
+        <Fmt3>{W}42:m_batteryvoltagepercetage	3	0</Fmt3>
+    </watch_formats>
+    <Trace2>
+        <Enabled>0</Enabled>
+        <ShowSource>0</ShowSource>
+    </Trace2>
+    <TermIOLog>
+        <LoggingEnabled>_ 0</LoggingEnabled>
+        <LogFile>_ ""</LogFile>
+    </TermIOLog>
+    <LogFile>
+        <LoggingEnabled>_ 0</LoggingEnabled>
+        <LogFile>_ "$PROJ_DIR$\LogFile1.log"</LogFile>
+        <Category2>_ 2</Category2>
+    </LogFile>
+    <DisassembleMode>
+        <mode>0</mode>
+    </DisassembleMode>
+    <Breakpoints2>
+        <Count>0</Count>
+    </Breakpoints2>
+    <Aliases>
+        <Count>0</Count>
+        <SuppressDialog>0</SuppressDialog>
+    </Aliases>
+</settings>

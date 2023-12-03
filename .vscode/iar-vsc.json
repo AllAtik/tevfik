@@ -1,0 +1,18 @@
+{
+  "workspace": {
+    "path": "${workspaceFolder}\\STM32-L051R8-M66-BOOT\\EWARM\\Project.eww"
+  },
+  "workspaces": {
+    "${workspaceFolder}\\STM32-L051R8-M66-BOOT\\EWARM\\Project.eww": {
+      "configs": {
+        "${workspaceFolder}\\STM32-L051R8-M66-BOOT\\EWARM\\STM32-L051R8-M66-BOOT.ewp": "STM32-L051R8-M66-BOOT"
+      },
+      "selected": {
+        "path": "${workspaceFolder}\\STM32-L051R8-M66-BOOT\\EWARM\\STM32-L051R8-M66-BOOT.ewp"
+      }
+    }
+  },
+  "workbench": {
+    "path": "C:\\Program Files\\IAR Systems\\Embedded Workbench 9.1"
+  }
+}

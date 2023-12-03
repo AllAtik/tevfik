@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspace>
+    <project>
+        <path>$WS_DIR$\STM32-L051R8-M65-APP\EWARM\STM32-L051R8-M65-APP.ewp</path>
+    </project>
+    <project>
+        <path>$WS_DIR$\STM32-L051R8-M65-BOOT\EWARM\STM32-L051R8-M65-BOOT.ewp</path>
+    </project>
+    <project>
+        <path>$WS_DIR$\STM32-L051R8-M66-APP\EWARM\STM32-L051R8-M66-APP.ewp</path>
+    </project>
+    <project>
+        <path>$WS_DIR$\STM32-L051R8-M66-BOOT\EWARM\STM32-L051R8-M66-BOOT.ewp</path>
+    </project>
+    <batchBuild />
+</workspace>

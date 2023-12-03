@@ -1,0 +1,1289 @@
+bool UL_GsmModuleMqttInitial(const S_GSM_MQTT_CONNECTION_PARAMETERS *f_pGsmMqttConnectionParameters)
+{
+    m_sGsmMqttConnectionParameters = *f_pGsmMqttConnectionParameters;
+
+    int tryCount = 0;
+start_step:;
+    if (++tryCount > 20)
+    {
+#ifdef _gsm_debug
+        __logsw("UL_GsmModuleMqttInitial:Try limit error\n");
+#endif
+        return false;
+    }
+
+    bool checkFlg = false;
+    if (ModuleSendCommandAndGetResponseProc("AT+CREG?\r", "\r\nOK\r\n", 5, 1000))
+    {
+        int val1, val2;
+        if (sscanf(_c(m_receiveGsmEndBuf), "%*[^:]: %d,%d%*[^\r\n]", &val1, &val2) == 2)
+        {
+            if (val2 == 1)
+            {
+                checkFlg = true;
+            }
+        }
+    }
+    if (!checkFlg)
+    {
+        _gsm_delay(1000);
+        goto start_step;
+    }
+
+    memset((void *)m_transmitGsmBuf, 0, 256);
+    sprintf((char *)m_transmitGsmBuf, "AT+CGDCONT=3,\"IP\",\"%s\"\r", f_pGsmMqttConnectionParameters->sGsmApn.name);
+
+    if (!ModuleSendCommandAndGetResponseProc((const char *)m_transmitGsmBuf, "\r\nOK\r\n", 5, 1000))
+    {
+        _gsm_delay(1000);
+        goto start_step;
+    }
+
+    if (!ModuleSendCommandAndGetResponseProc("AT+CGACT=1,1\r", "\r\nOK\r\n", 5, 1000))
+    {
+        _gsm_delay(1000);
+        goto start_step;
+    }
+
+    if (!ModuleSendCommandAndGetResponseProc("AT+CGPADDR=1\r", "\r\nOK\r\n", 5, 1000))
+    {
+        _gsm_delay(1000);
+        goto start_step;
+    }
+
+    if (!ModuleSendCommandAndGetResponseProc("AT+CGREG=1\r", "\r\nOK\r\n", 5, 1000))
+    {
+        _gsm_delay(1000);
+        goto start_step;
+    }
+
+    tryCount = 0;
+second_step:;
+    if (++tryCount > 20)
+    {
+        return false;
+    }
+
+    checkFlg = false;
+    if (ModuleSendCommandAndGetResponseProc("AT+CGACT?\r", "\r\nOK\r\n", 5, 1000))
+    {
+        int val1, val2;
+        if (sscanf((const char *)m_receiveGsmEndBuf, "%*[^: ]: %d,%d[^\r\n]", &val1, &val2) == 2)
+        {
+            if (val2 == 1)
+                checkFlg = true;
+        }
+    }
+
+    if (!checkFlg)
+    {
+        _gsm_delay(1000);
+        goto second_step;
+    }
+
+    tryCount = 0;
+    bool tcpConnectFlg = false;
+third_step:;
+    if (++tryCount > 20)
+    {
+        return false;
+    }
+
+    if (tcpConnectFlg)
+    {
+        if (!ModuleSendCommandAndGetResponseProc("AT+QICLOSE\r", "\r\nOK\r\n", 5, 3000))
+        {
+            _gsm_delay(1000);
+            goto third_step;
+        }
+        tcpConnectFlg = false;
+    }
+
+    if (!ModuleSendCommandAndGetResponseProc("AT+QINDI=1\r", "\r\nOK\r\n", 5, 3000))
+    {
+        _gsm_delay(1000);
+        goto third_step;
+    }
+    memset((void *)m_transmitGsmBuf, 0, 256);
+    sprintf((char *)m_transmitGsmBuf, "AT+QIOPEN=\"TCP\",\"%s\",%d\r", f_pGsmMqttConnectionParameters->sMqtt.urlBuf, f_pGsmMqttConnectionParameters->sMqtt.port);
+
+    if (!ModuleSendCommandAndGetResponseProc((const char *)m_transmitGsmBuf, "\r\nOK\r\n", 1, 120000))
+    {
+#ifdef _gsm_debug
+        __logse("UL_GsmModuleMqttInitial:Tcp connection error step 1\n");
+#endif
+        return false;
+    }
+
+    // if (!ModuleListenResultProc("\r\n+QIOPEN: 0,0\r\n", 30000))
+    if (!ModuleListenResultProc("CONNECT", 30000))
+    {
+#ifdef _gsm_debug
+        __logse("UL_GsmModuleMqttInitial:Tcp connection error step 2\n");
+#endif
+        return false;
+    }
+
+    tcpConnectFlg = true;
+#ifdef _gsm_debug
+    __logsi("UL_GsmModuleMqttInitial:Tcp connection ok\n");
+#endif
+
+    if (!MqttConnectionProc(f_pGsmMqttConnectionParameters))
+    {
+#ifdef _gsm_debug
+        __logse("UL_GsmModuleMqttInitial:Mqtt connection error\n");
+#endif
+        return false;
+    }
+
+    m_eMqttConnectionOkFlg = true;
+    UL_GsmModuleMqttConnectionStatusCallback(connectGsmMqttConnectionStatus);
+
+    return true;
+}
+
+
+
+
+
+/****************/
+NTC source header
+
+#include "usr_lib_ntc.h"
+
+#define _io static
+#define _iov static volatile
+
+_io int16_t NtcGetTempProc(uint32_t f_raw);
+_io void UsrSleepSensorGpioPins(GPIO_TypeDef *f_pGpio, uint16_t f_pinGroup, GPIO_PinState f_ePinstate);
+_io void UsrSleepAdcPins(GPIO_TypeDef *f_pGpio, uint16_t f_pinGroup, GPIO_PinState f_ePinstate);
+
+_io S_NTC_PARAMETERS     m_sNtcParameter;
+_io S_NTC_RAW_PARAMETERS m_sNtcRawParameter;
+
+#define _NTC_ADC_POWER(x)    HAL_GPIO_WritePin(m_sNtcParameter.pNtcPort, m_sNtcParameter.pNtcPin, (GPIO_PinState) x)  
+
+uint16_t adc_values_dma_buffer[_ADC_CHANNEL_COUNT];
+_iov uint16_t m_adcRawValueBuffer[_ADC_CHANNEL_COUNT][_SAMPLE_COUNT];
+
+_io bool ntcPowerFlag = false;
+_iov bool m_adcConverisonFinishedFlg = false;
+
+_io void UsrSleepAdcPins(GPIO_TypeDef *f_pGpio, uint16_t f_pinGroup, GPIO_PinState f_ePinstate);
+_io void UsrSleepSensorGpioPins(GPIO_TypeDef *f_pGpio, uint16_t f_pinGroup, GPIO_PinState f_ePinstate);
+
+const float m_ntcTable1Buf[40][2] = {
+    {-40, 6120926.223}, //// @ -40
+    {-35, 4118517.102}, //// @ -35
+    {-30, 2816706.28},  //// @ -30
+    {-25, 1956101.683}, //// @ -25
+    {-20, 1378149.975}, //// @ -20
+    {-15, 984222.4427}, //// @ -15
+    {-10, 711944.165},  //// @ -10
+    {-5, 521247.1641},  //// @ -5
+    {0, 386009.9863},   //// @ 0
+    {5, 288963.5853},   //// @ 5
+    {10, 218539.0216},  //// @ 10
+    {15, 166887.948},   //// @	15
+    {20, 128622.1114},  //// @ 20
+    {25, 100000},       //// @ 25
+    {30, 78395.35969},  //// @ 30
+    {35, 61945.7014},   //// @ 35
+    {40, 49317.16834},  //// @ 40
+    {45, 39545.51541},  //// @ 45
+    {50, 31927.4356},   //// @ 50
+    {55, 25945.54926},  //// @ 55
+    {60, 21216.1327},   //// @ 60
+    {65, 17452.35867},  //// @ 65
+    {70, 14438.21854},  //// @ 70
+    {75, 12009.86651},  //// @ 75
+    {80, 10042.16562},  //// @ 80
+    {85, 8438.910153},  //// @ 85
+    {90, 7125.666732},  //// @ 90
+    {95, 6044.495457},  //// @ 95
+    {100, 5150.030465}, //// @ 100
+    {105, 4406.550634}, //// @ 105
+    {110, 3785.776329}, //// @ 110
+    {115, 3265.202078}, //// @ 115
+    {120, 2826.827341}, //// @ 120
+    {125, 2456.184829}, //// @ 125
+    {130, 2141.592509}, //// @ 130
+    {135, 1873.574746}, //// @ 135
+    {140, 1644.412049}, //// @ 140
+    {145, 1447.789097}, //// @	145
+    {150, 1278.518288}  //// @ 150
+};
+
+const float m_ntcTable2Buf[40][2] = {
+    {-40, 4397119}, //// @ -40
+    {-35, 3088599}, //// @ -35
+    {-30, 2197225}, //// @ -30
+    {-25, 1581881}, //// @ -25
+    {-20, 1151037}, //// @ -20
+    {-15, 846579},  //// @ -15
+    {-10, 628988},  //// @ -10
+    {-5, 471632},   //// @ -5
+    {0, 357012},    //// @ 0
+    {5, 272500},    //// @ 5
+    {10, 209710},   //// @ 10
+    {15, 162651},   //// @	15
+    {20, 127080},   //// @ 20
+    {25, 100000},   //// @ 25
+    {30, 79222},    //// @ 30
+    {35, 63167},    //// @ 35
+    {40, 50677},    //// @ 40
+    {45, 40904},    //// @ 45
+    {50, 33195},    //// @ 50
+    {55, 27091},    //// @ 55
+    {60, 22224},    //// @ 60
+    {65, 18323},    //// @ 65
+    {70, 15184},    //// @ 70
+    {75, 12635},    //// @ 75
+    {80, 10566},    //// @ 80
+    {85, 8873},     //// @ 85
+    {90, 7481},     //// @ 90
+    {95, 6337},     //// @ 95
+    {100, 5384},    //// @ 100
+    {105, 4594},    //// @ 105
+    {110, 3934},    //// @ 110
+    {115, 3380},    //// @ 115
+    {120, 2916},    //// @ 120
+    {125, 2522},    //// @ 125
+    {130, 2522},    //// @ 130
+    {135, 2522},    //// @ 135
+    {140, 2522},    //// @ 140
+    {145, 2522},    //// @ 145
+    {150, 2522}     //// @ 150
+};
+
+bool UL_NtcInitial(S_NTC_PARAMETERS *f_pParameter)
+{
+  m_sNtcParameter = *f_pParameter;
+  _NTC_ADC_POWER(1);
+  // HAL_GPIO_WritePin(m_sNtcParameter.pNtcPort, m_sNtcParameter.pNtcPin, GPIO_PIN_SET);
+  // minik bir delay eklenebilir...
+
+  return true;
+}
+
+void UL_NtcPeripheral(ENtcControl f_eControl)
+{
+  if(f_eControl == enableNtcSensor)
+  {
+    UL_NtcInitial(&m_sNtcParameter);
+  }
+  else
+  {
+    _NTC_ADC_POWER(disableNtcSensor);
+    // UsrSleepSensorGpioPins(_BATTERY_ADC14_HIGH_PORT,     _BATTERY_ADC14_HIGH_PIN,      GPIO_PIN_SET);
+    // UsrSleepAdcPins(_VBAT_ADC_ON_OFF_PORT,               _VBAT_ADC_ON_OFF_PIN,         GPIO_PIN_RESET);  
+  }
+}
+
+// uint16_t temp = 0;
+// uint16_t vreftemp = 0;
+
+bool UL_AdcTempReading(S_NTC_RAW_PARAMETERS *f_raw)
+{
+    if (f_raw != NULL) 
+    {
+        *f_raw = m_sNtcRawParameter;
+    }
+
+    m_adcConverisonFinishedFlg = false;
+    if(HAL_OK == HAL_ADC_Start_DMA(&hadc, (uint32_t*)adc_values_dma_buffer, _ADC_CHANNEL_COUNT))
+    {
+        while(!m_adcConverisonFinishedFlg)
+        ;
+        uint16_t temp = 0;
+        uint16_t vreftemp = 0; 
+        for(uint8_t i = 0; i < _SAMPLE_COUNT; i++)
+        {
+            temp += m_adcRawValueBuffer[_TEMP_ADC_CHANNEL][i];   
+        }
+        temp /= _SAMPLE_COUNT;
+
+        f_raw->rawtempvalue = temp;
+
+        return true;
+    }
+    else
+    {
+        HAL_ADC_Stop_DMA(&hadc);
+        return false;        
+    }    
+}
+
+float UL_NtcGetValue(uint32_t f_rawAdcValue)
+{
+    int16_t derece = NtcGetTempProc(m_sNtcRawParameter.rawtempvalue);
+    return derece;
+}
+
+_io int16_t NtcGetTempProc(uint32_t f_raw)
+{
+    uint8_t dataOkFlg = false;
+    float resistor, resMin, resMax;
+    float retVal, step, stepCount;
+    uint8_t count = 0;
+
+    resistor = (_NTC_SERIAL_RES * f_raw) / (_NTC_ADC_RESULOTION - f_raw);
+
+    // temperature between -40 +150
+    if(resistor < _NTC_BOTTOM_RES_VALUE)
+    {
+        resistor = _NTC_TOP_RES_VALUE;
+    }
+    else if(resistor > _NTC_BOTTOM_RES_VALUE)
+    {
+        resistor = _NTC_BOTTOM_RES_VALUE;
+    }
+
+    // Scan ntc array
+    for(count = 0; count < _MEMBER_SIZE_OF_NTC; count++)
+    {
+        if(resistor >= m_ntcTable1Buf[count][1])
+        {
+            if(resistor == m_ntcTable2Buf[count][1])
+            {
+                retVal = m_ntcTable2Buf[count][0];
+                dataOkFlg = true;
+            }
+            else
+            {
+                resMax = m_ntcTable2Buf[count-1][1];
+                resMin = m_ntcTable2Buf[count][1];
+            }
+            break;
+        }
+    }
+    if(dataOkFlg)
+    {
+        return (int16_t)(retVal * 10);
+    }
+    else
+    {
+        step = (float)(resMax - resMin) / 50;
+        stepCount = (float)(resistor - resMin) / step;
+        retVal = m_ntcTable1Buf[count][0] - (stepCount * 0.1);
+        return (int16_t)(retVal * 10);
+    }
+}
+
+// sicaklik degerini hesaplayacak fonksiyon
+// bu fonksiyon cagirilmadan once UL_AdcGetValues fonksiyonu cagirilmis olmali
+float UL_ThermistorNtc(uint16_t analogValue)
+{
+  float g_ntcraw = ((_NTC_UP_R) / ((_USR_ADC_NTC_RESOLUTION/analogValue) - 1)); // 12 bit resolution
+  float g_NtcLn = log(g_ntcraw);
+
+  float g_ntctemp = (1.0 / (A + B*g_NtcLn + C*g_NtcLn*g_NtcLn*g_NtcLn)) - 273.15;
+
+  if(g_ntctemp <= -272.150)
+  {
+    return -1; 
+  }
+  
+  else
+  {
+    return g_ntctemp;
+  }
+  
+}
+
+_io void UsrSleepSensorGpioPins(GPIO_TypeDef *f_pGpio, uint16_t f_pinGroup, GPIO_PinState f_ePinstate)
+{
+    GPIO_InitTypeDef GPIO_InitStruct;
+
+    HAL_GPIO_WritePin(f_pGpio, f_pinGroup, f_ePinstate);
+    GPIO_InitStruct.Pin = f_pinGroup;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    
+    HAL_GPIO_Init(f_pGpio, &GPIO_InitStruct);
+}
+
+_io void UsrSleepAdcPins(GPIO_TypeDef *f_pGpio, uint16_t f_pinGroup, GPIO_PinState f_ePinstate)
+{
+    GPIO_InitTypeDef GPIO_InitStruct;
+
+    HAL_GPIO_WritePin(f_pGpio, f_pinGroup, f_ePinstate);
+    GPIO_InitStruct.Pin = f_pinGroup;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(f_pGpio, &GPIO_InitStruct);
+}
+
+
+/*******************/
+NTC Header dosyası
+
+#ifndef __USR_LIB_NTC_H
+#define __USR_LIB_NTC_H
+
+#include "usr_arch.h"
+
+#ifdef STM32_L051R8
+    #include "main.h"
+    #include "gpio.h"
+    #include "adc.h"
+#endif
+
+#define _TEMPERATURE_NTC_ACTIVE_PORT     GPIOC
+#define _TEMPERATURE_NTC_ACTIVE_PIN      GPIO_PIN_0
+
+#define _USR_ADC_NTC_RESOLUTION          4095.0
+#define _VREF_ADD                        ((uint16_t *)((uint32_t)0x1FF80078))      // VREFINT_CAL_ADDR  stm32l051 datasheet 6.3.3.
+#define _NTC_ADC_RESULOTION              (uint16_t)4095
+#define _NTC_SERIAL_RES                  (uint32_t)100000
+#define _NTC_BOTTOM_RES_VALUE            (uint32_t)6120926
+#define _NTC_TOP_RES_VALUE               (uint32_t)1278
+#define _MEMBER_SIZE_OF_NTC              (uint8_t)39
+#define _ADC_CHANNEL_COUNT               4
+#define _TEMP_ADC_CHANNEL                0 
+#define _SAMPLE_COUNT                    16
+
+#define _NTC_UP_R                        10000.0f
+
+#define   A                              0.0008736528f
+#define   B                              0.000253893f
+#define   C                              0.0000001816f
+
+typedef enum 
+{
+    disableNtcSensor,
+    enableNtcSensor,
+}ENtcControl;
+
+typedef struct S_NTC_PARAMETERS_TAG
+{
+    GPIO_TypeDef      *pNtcPort;
+    int                pNtcPin;
+    uint8_t            ntcstatus;
+}S_NTC_PARAMETERS;
+
+typedef struct S_NTC_RAW_PARAMETERS_TAG
+{
+    uint16_t rawtempvalue;
+}S_NTC_RAW_PARAMETERS;
+
+bool UL_NtcInitial(S_NTC_PARAMETERS *f_pParameter);
+void UL_NtcPeripheral(ENtcControl f_eControl);
+float UL_NtcGetValue(uint32_t f_rawAdcValue);
+bool UL_AdcTempReading(S_NTC_RAW_PARAMETERS *f_raw);
+
+
+float UL_ThermistorNtc(uint16_t analogValue);
+
+#endif
+
+
+
+/// 7.11.2023 Ayberk'den önceki
+usr-sensor.c dosyası
+#include "usr_general.h"
+
+#define _io static
+#define _iov static volatile
+
+#define _USR_SENSOR_DISTANCE_SAMPLE  16
+#define _USR_SENSOR_NTC_SAMPLE       16
+
+char mainbuffer2[150] = {0};
+
+extern S_SENSOR_ALL_VALUES             g_sAllSensorValues;
+extern S_DEVICE_NVS_INFO           g_sUsrSystemUsrNvsDeviceInfo;
+
+extern S_ADC_PARAMETERS                g_sUsrSystemAdcParameters;
+extern S_ADC_RAW_PARAMETERS            g_sUsrSystemAdcRawParameters;
+extern S_BATTERY_DATA                  g_sUsrSystemBatteryParameters;
+extern S_NTC_PARAMETERS                g_sUsrSystemNtcParameters;
+
+extern S_HALLEFFECT_PARAMETERS         g_sUsrSystemHalleffectParameters;
+
+extern S_ULTRASONIC_SENSOR_PARAMETERS  g_sUsrSystemUltrasonicParameters;
+
+extern S_TIMEDATE                      g_sUsrSystemTimeParameters;
+
+#define _USR_SENSOR_DISTANCE_SENSOR_ON_OFF(x) HAL_GPIO_WritePin(g_sUsrSystemUltrasonicParameters.pDistanceSensorOnOffPort, g_sUsrSystemUltrasonicParameters.sensorOnOffPin, (GPIO_PinState)x)
+#define _USR_SENSOR_NTC_SENSOR_ON_OFF(x)      HAL_GPIO_WritePin(g_sUsrSystemNtcParameters.pNtcPort, g_sUsrSystemNtcParameters.pNtcPin, (GPIO_PinState)x)
+#define _USR_SENSOR_BATTERY_SENSOR_ON_OFF(x)  HAL_GPIO_WritePin(g_sUsrSystemBatteryParameters.pbatteryPort, g_sUsrSystemBatteryParameters.pbatteryPin, (GPIO_PinState)x)
+
+_io float   CalculateBatteryVoltageProc(void);
+_io uint8_t CalculateBatteryVoltagePercentageProc(float f_battery);
+_io int     CalculateDistanceSensorValueProc(void);
+_io void    UltrasonicSensorInitialProc(void);
+_io void    AdcSensorsInitialProc(void);
+_io void    AllPeripheralDisableProc(void);
+_io float   CalculateNtcTempValueProc(void);
+
+// Ultrasonic variables
+int     m_UltrasonicDistance = 0;
+int     m_UltrasonicRawDistance = 0; 
+int     m_DistanceValues[_USR_SENSOR_DISTANCE_SAMPLE] = {0};
+int     m_DistanceSum = 0;
+uint8_t m_SampleCounterDistane = 0;
+
+// Error flags
+bool g_MeasurementErrorFlag = false;
+bool g_TemperatureErrorFlag = false;
+
+// Adc variables
+float   m_NtcTempValue[_USR_SENSOR_NTC_SAMPLE] = {0};
+float   m_NtcSum = 0;
+uint8_t m_SampleCounterNtc = 0;
+float   m_NtcTemp = 0;
+float   m_NtcRawTemp = 0;
+float   m_BatteryVolt = 0;
+//float m_BatteryVoltage = 0; //
+uint8_t m_BatteryVoltagePercentage = 0;
+
+// Timeout parameters
+uint16_t timestamp = 0;
+uint16_t g_SensorsIntervalTime = 5000; // ms
+uint16_t g_MeasurementTimeout =  5000; // ms
+uint16_t g_TempReadingTimeout =  5000;
+uint32_t g_LastMeasurementTime = 0;
+uint32_t g_LastTempReadingTime = 0;
+
+extern bool g_UsrSystemSleepOnFlag;
+extern bool g_UsrSystemAdcSensorInitialFlag;
+extern bool g_UsrSystemTemperatureSensorInitialFlag;
+extern bool g_UsrSystemBatterySensorInitialFlag;
+extern bool g_UsrProcessReadingStartFlag;              // Sensor reading flag(Initial da resetden gelince set edilecek flag)
+extern bool g_UsrSystemSendDecideDataFlag;
+bool g_UsrSensorHallEffectSensorInitialFlag   = false;
+bool g_UsrSystemUltrasonicSensorInitialFlag   = false;
+
+// Fill Struct Flag
+bool g_FillStructFlag = false;
+
+void UsrSensorGetValues(void)
+{ 
+    uint32_t currentTime = HAL_GetTick();
+    UsrSystemWatchdogRefresh();
+
+    if(g_UsrProcessReadingStartFlag && ((currentTime - g_LastMeasurementTime) >= g_SensorsIntervalTime))
+    {
+        AdcSensorsInitialProc();
+        UltrasonicSensorInitialProc();
+        g_LastMeasurementTime = currentTime;
+    }
+
+    if(g_UsrProcessReadingStartFlag)
+    {
+        if(g_UsrSystemAdcSensorInitialFlag)
+        {
+            if(UL_AdcGetValues(&g_sUsrSystemAdcParameters, &g_sUsrSystemAdcRawParameters))
+            {
+                g_sAllSensorValues.adcdataokflag = true;
+                m_BatteryVolt = CalculateBatteryVoltageProc();
+            }
+        }
+
+        if(g_UsrSystemUltrasonicSensorInitialFlag)
+        {
+            g_sAllSensorValues.distancedataokflag = true;
+        }
+
+        if(g_sAllSensorValues.adcdataokflag)
+        {
+            m_NtcTemp = CalculateNtcTempValueProc();
+            //m_BatteryVolt = CalculateBatteryVoltageProc();
+            m_BatteryVoltagePercentage = CalculateBatteryVoltagePercentageProc(m_BatteryVolt);
+            g_FillStructFlag = true;
+        }
+
+        if(g_sAllSensorValues.distancedataokflag)
+        {
+            m_UltrasonicDistance = CalculateDistanceSensorValueProc();
+            g_FillStructFlag = true;
+        }
+
+        if(g_FillStructFlag)
+        {
+            g_sAllSensorValues.tempvalue = m_NtcTemp;
+            g_sAllSensorValues.batteryvoltage = m_BatteryVolt;
+            g_sAllSensorValues.batteryvoltagepercentage = m_BatteryVoltagePercentage;
+            g_sAllSensorValues.distancevalue = m_UltrasonicDistance;
+            g_FillStructFlag = false;
+        }
+
+        if((currentTime - g_LastMeasurementTime >= g_SensorsIntervalTime))
+        {
+            AllPeripheralDisableProc();
+            g_LastMeasurementTime = currentTime;
+        }
+    }
+}
+
+void UsrSensorHallEffectGivePower(void)
+{
+    UsrSleepGpioInputPins(BATTERY_COVER_HALL_SWITCH_OUT_INT_GPIO_Port, BATTERY_COVER_HALL_SWITCH_OUT_INT_Pin | TOP_COVER_HALL_SWITCH_OUT_INT_Pin);
+    UL_HalleffectPeripheral(&g_sUsrSystemHalleffectParameters, enableHalleffect);
+    g_UsrSensorHallEffectSensorInitialFlag = true;
+}
+
+
+void UsrSensorHallEffectPinStatus(void)
+{
+    g_sAllSensorValues.halleffectalarmstatus = 0;
+    if(_TOP_COVER_HALL_READ_PIN())
+    {
+        g_sAllSensorValues.halleffectalarmstatus |= 0x01;
+        g_UsrSystemSendDecideDataFlag = true;
+    }
+    else
+    {
+        g_sAllSensorValues.halleffectalarmstatus &= (~0x01);
+        g_UsrSystemSendDecideDataFlag = true;
+    }
+
+    if(_BATTERY_COVER_HALL_READ_PIN())
+    {
+        g_sAllSensorValues.halleffectalarmstatus |= 0x02;
+        g_UsrSystemSendDecideDataFlag = true;
+    }
+    else
+    {
+        g_sAllSensorValues.halleffectalarmstatus &= (~0x02);
+        g_UsrSystemSendDecideDataFlag = true;
+    }
+    
+    _BATTERY_COVER_HALL_POWER(0);
+    _TOP_COVER_HALL_POWER(0);
+    UsrSleepGpioOutPins(BATTERY_COVER_HALL_SWITCH_OUT_INT_GPIO_Port, BATTERY_COVER_HALL_SWITCH_OUT_INT_Pin | TOP_COVER_HALL_SWITCH_OUT_INT_Pin, GPIO_PIN_RESET);
+    g_UsrSensorHallEffectSensorInitialFlag = false;
+    
+    // Her okuma yapıldıktan sonra uyku moduna çekildi.
+}
+
+
+void UsrSensorDistancePrepareMesaurement(void)
+{
+    // g_sUsrSensorAllValuesParameters.distancedataokflag = true;
+}
+
+void UsrSensorAdcPrepareMeasurement(void)
+{
+
+}
+
+
+_io void UltrasonicSensorInitialProc(void)
+{
+    if(UL_UltrasonicSensorInitial(&g_sUsrSystemUltrasonicParameters))
+    {
+        g_UsrSystemUltrasonicSensorInitialFlag = true;
+        UL_UltrasonicSensorPeripheral(&g_sUsrSystemUltrasonicParameters, enableUltrasonicSensor);
+    }
+    else
+        g_UsrSystemUltrasonicSensorInitialFlag = false;
+    
+}
+
+
+_io float CalculateBatteryVoltageProc(void)
+{
+    float factor = (3*(*(VREF_ADD))) / ((float)g_sUsrSystemAdcRawParameters.rawvreftempvalue);
+    uint32_t rawBatteryValue = g_sUsrSystemAdcRawParameters.rawbatteryhighvalue - g_sUsrSystemAdcRawParameters.rawbatterylowvalue;
+    float m_BatteryVoltage = ((factor * (float)rawBatteryValue) / USR_ADC_RESOLUTION) * VBAT_ADC_CALIBRATION_VALUE;    
+    return m_BatteryVoltage;
+}
+
+
+_io uint8_t CalculateBatteryVoltagePercentageProc(float f_battery)
+{
+    uint8_t batteryPercentage = 0;
+
+    if (f_battery >= 6.95)
+    {
+        batteryPercentage = 100;
+    }  
+    else if (f_battery >= 6.85)
+    {
+        batteryPercentage = 60;
+    }
+    else if (f_battery >= 6.70)
+    {
+        batteryPercentage = 50;
+    }
+    else if (f_battery >= 6.50)
+    {
+        batteryPercentage = 30;
+    }
+    else if (f_battery >= 6.30)
+    {
+        batteryPercentage = 10;
+    }
+    else
+    {
+        batteryPercentage = 0;
+    }
+    return batteryPercentage;    
+}
+
+
+_io int CalculateDistanceSensorValueProc(void)
+{
+    bool distanceControlFlag = false;
+    uint32_t currentTime = HAL_GetTick();
+    m_UltrasonicRawDistance = UL_UltrasonicSensorGetValue(100);
+
+    if(m_UltrasonicRawDistance != _USR_SENSOR_DISTANCE_ERROR_VALUE)
+        distanceControlFlag = true;
+    else
+        distanceControlFlag = false;
+
+    if(distanceControlFlag)
+    {
+        // Timeout
+        m_DistanceValues[m_SampleCounterDistane] = m_UltrasonicRawDistance;
+        m_SampleCounterDistane++;
+        if(m_SampleCounterDistane >= _USR_SENSOR_DISTANCE_SAMPLE)
+        {
+            m_SampleCounterDistane = 0;
+            m_DistanceSum = 0;
+            for(uint8_t i = 0; i < _USR_SENSOR_DISTANCE_SAMPLE; i++)
+            {
+                m_DistanceSum += m_DistanceValues[i];
+            }
+            m_DistanceSum /= _USR_SENSOR_DISTANCE_SAMPLE;
+            g_LastMeasurementTime = HAL_GetTick();
+            return m_DistanceSum;
+        }
+    }
+    else
+    {
+        g_sAllSensorValues.distancesensorerrorflag = g_MeasurementErrorFlag; // ölçüm düzgün değilse error flag set et.
+        if((currentTime - g_LastMeasurementTime) >= g_MeasurementTimeout)
+        {
+            g_MeasurementErrorFlag = true;
+            g_UsrSystemUltrasonicSensorInitialFlag = false;
+            _USR_SENSOR_DISTANCE_SENSOR_ON_OFF(0);
+            UL_UltrasonicSensorPeripheral(&g_sUsrSystemUltrasonicParameters, disableUltrasonicSensor);
+            //HAL_NVIC_SystemReset();
+        }
+        else
+        {
+            g_MeasurementErrorFlag = false;
+        } 
+    }
+    return 0;
+}
+
+
+_io void AdcSensorsInitialProc(void)
+{
+    if(UL_AdcInitial(&g_sUsrSystemAdcParameters))
+    {
+        g_UsrSystemAdcSensorInitialFlag = true;
+        UL_AdcPeripheral(&g_sUsrSystemAdcParameters, enableAdcPeripheral);
+
+        if(UL_NtcInitial(&g_sUsrSystemNtcParameters))
+        {
+            UL_NtcPeripheral(&g_sUsrSystemNtcParameters, enableNtcPeripheral);
+            g_UsrSystemTemperatureSensorInitialFlag = true;
+        }
+        if(UL_BatteryInitial(&g_sUsrSystemBatteryParameters))
+        {
+            UL_BatteryPeripheral(&g_sUsrSystemBatteryParameters, enableBatteryPeripheral);
+            g_UsrSystemBatterySensorInitialFlag = true;
+        }
+    }
+    else
+    {
+        g_UsrSystemAdcSensorInitialFlag = false;
+    }
+
+}
+
+
+_io void AllPeripheralDisableProc(void)
+{
+    UL_AdcPeripheral(&g_sUsrSystemAdcParameters, disableAdcPeripheral);
+    UL_NtcPeripheral(&g_sUsrSystemNtcParameters, disableNtcPeripheral);
+    UL_BatteryPeripheral(&g_sUsrSystemBatteryParameters, disableBatteryPeripheral);
+    UL_UltrasonicSensorPeripheral(&g_sUsrSystemUltrasonicParameters, disableUltrasonicSensor);
+    UL_GsmModulePeripheral(disableGsmPeripheral);
+}
+
+_io float CalculateNtcTempValueProc(void)
+{
+    bool ntcControlFlag = false;
+    uint32_t currentTime = HAL_GetTick();
+    m_NtcRawTemp = UL_NtcGetValue(g_sUsrSystemAdcRawParameters.rawtempvalue);
+
+    if(m_NtcRawTemp != _USR_SENSOR_ADC_ERROR_VALUE)
+        ntcControlFlag = true;
+    else
+        ntcControlFlag = false;
+
+    if(ntcControlFlag)
+    {
+        m_NtcTempValue[m_SampleCounterNtc] = m_NtcRawTemp;
+        m_SampleCounterNtc++;
+        if(m_SampleCounterNtc >= _USR_SENSOR_NTC_SAMPLE)
+        {
+            m_SampleCounterNtc = 0;
+            m_NtcSum = 0;
+            for(uint8_t i = 0; i < _USR_SENSOR_NTC_SAMPLE; i++)
+            {
+                m_NtcSum += m_NtcTempValue[i];
+            }
+            m_NtcSum /= _USR_SENSOR_NTC_SAMPLE;
+            return m_NtcSum;
+        }
+    }
+    else
+    {
+        g_sAllSensorValues.temperatureSensorErrorFlag = g_TemperatureErrorFlag;
+        if((currentTime - g_LastTempReadingTime) >= g_TempReadingTimeout)
+        {
+            g_TemperatureErrorFlag = true;
+            _USR_SENSOR_NTC_SENSOR_ON_OFF(0);
+            _USR_SENSOR_BATTERY_SENSOR_ON_OFF(0);
+            // İki sensor de kapatılabilir.
+        }
+        else
+        {
+            g_TemperatureErrorFlag = false;
+        }
+    }
+    
+
+    return 0;
+} 
+
+
+// 10 kasım 2023 
+// usr_process.c dosyası Ayberk'den önceki
+
+void UsrProcessAlarmProcess(void)
+{
+    uint32_t currentTime = UL_RtcGetTs();
+    if((currentTime - g_UsrSystemLastAlarmsTime) >= g_UsrsystemAlarmsIntervalTime)
+    {
+        g_UsrSystemLastAlarmsTime = currentTime;
+        if(g_UsrProcessReadingStartFlag)
+        {
+            if(g_sAllSensorValues.distancedataokflag && (!g_sAllSensorValues.distancesensorerrorflag) ) // data alindi ve hatasiz
+            {
+                isTankFullLast = g_sUsrProcessAyberkAlarmType.isTankFull;
+                if(g_sAllSensorValues.distancevalue <= g_sNvsDeviceInfo.fullAlarmLimit)          /// TANK DOLU
+                {
+                    g_DeviceSendType = enableFullAlarmLimitSendDecideData;
+
+                    g_sUsrProcessAyberkAlarmType.isTankFull = 1;
+                    m_AlarmGroupBits |= 0x02;
+                }   
+                else                                                                                                    /// TANK DOLU DEGIL
+                {
+                    g_DeviceSendType = disableFullAlarmLimitSendDecideData;
+
+                    g_sUsrProcessAyberkAlarmType.isTankFull = 0;
+                    m_AlarmGroupBits &= ~(0x02);        
+                }
+
+                if(isTankFullLast != g_sUsrProcessAyberkAlarmType.isTankFull)                                                                      /// ARADA DEGISIM OLURSA ALARM GITSIN
+                {
+                    g_sAllSensorValues.alarmeventgroup = m_AlarmGroupBits; // sensor.c de struct isTankFullr 
+                    
+                    isTankCleanedChanged = 1;
+                    g_UsrSystemSendDecideDataFlag = true;   // Mqtt den gönder
+                }
+                else
+                {
+                    isTankCleanedChanged = 0;
+                }
+
+                /// boşaltıldı ihtimali
+                if(g_sAllSensorValues.distancevalue <= g_sNvsDeviceInfo.fullnessAlarmLimit)       /// FULLNESS UZERINE CIKILDI
+                {
+                    g_sUsrProcessAyberkAlarmType.isTankCleaned = 0;
+                    m_AlarmGroupBits &= ~(0x01);
+                    
+                    fullnessLimitExdeed = 1; 
+                }
+
+                if(fullnessLimitExdeed)                                                                              
+                {
+                    if(g_sAllSensorValues.distancevalue > (g_sNvsDeviceInfo.depthAlarmLimit * (100 - g_sNvsDeviceInfo.toleranceValue) / 100) )  /// SONRADAN ALTINA INILDI
+                    {
+                        g_sUsrProcessAyberkAlarmType.isTankCleaned = 1;                                                                                //// BİR SONRAKİ İTERASYONA KADAR KALACAK BU
+                        m_AlarmGroupBits |= (0x01);
+                        g_DeviceSendType = disablePreFullnessAlarmSendDecideData;
+                        g_UsrSystemSendDecideDataFlag = true;   // Mqtt den gönder
+
+                        fullnessLimitExdeed = 0;
+                    }
+                }
+            }
+
+            // atama burada yapılıyor, diğer dosyalarda sadece kıyaslama yapılsın
+            // aynı değilse veri gönderilmesin gsm'den 
+            if(g_sAllSensorValues.halleffectalarmstatus)      /// tum kapaklar kapaliysa 0 olacaktir ve atlanacaktir
+            {
+                if(g_UsrSystemCoverLastStatus != g_sAllSensorValues.halleffectalarmstatus)
+                {
+                    g_UsrSystemCoverLastStatus = g_sAllSensorValues.halleffectalarmstatus; 
+                                                                                                             
+                    g_UsrSystemSendDecideDataFlag = true;          /// DUZELTTIM VE DUZENLEDIM BURALARI
+                }            
+            }
+
+            // if(!g_UsrSystemSendDecideDataFlag)
+            // {
+            //     ClearFlagProc();
+            //     g_sleepFlag = 1;  // UsrSleepGeneral();
+            //     // Sleep e doğru gittiğinden gsm de kapatılacaktır ve veri gönderlmeyecektir.
+            //     // Gsm Kapat disable peripheral
+            // }
+            // else
+            // {
+            //     // Open Gsm
+                
+            // }
+
+            if(g_UsrSystemSendDecideDataFlag)
+            {
+                g_sAllSensorValues.alarmeventgroup       = m_AlarmGroupBits;
+                g_sAllSensorValues.halleffectalarmstatus = g_UsrSystemCoverLastStatus;
+                UsrProcessGsmModuleOpenProcess();
+                g_UsrSystemSendDecideDataFlag = false;
+            }
+                
+        }
+        else
+        {
+            ClearFlagProc();
+            // g_sleepFlag = 1; // UsrSleepGeneral();
+            // Sleep e doğru gittiğinden gsm de kapatılacaktır ve veri gönderlmeyecektir.
+        }
+
+        UsrSystemWatchdogRefresh();
+    }
+   
+                      
+}
+
+
+
+// 12 kasım 2023
+// Ayberk den önceki
+// usr_process.C
+#include "usr_general.h"
+
+extern S_SENSOR_ALL_VALUES              g_sAllSensorValues;
+extern S_DEVICE_NVS_INFO            g_sNvsDeviceInfo;
+
+extern S_HALLEFFECT_PARAMETERS          g_sUsrSystemHalleffectParameters;
+extern S_LED_PARAMETERS                 g_sUsrSystemLedParameters;
+
+extern S_GSM_PARAMETERS                  g_sUsrSystemGsmParameters;
+extern S_GSM_MODULE_INFO                 g_sUsrSystemGsmModuleInfo;
+extern S_GSM_MQTT_CONNECTION_PARAMETERS  g_sUsrSystemGsmMqttInitialParameters;
+extern S_GSM_FTP                         g_sUsrSystemGsmFtpParameters;
+
+extern bool g_UsrSensorsReadingStartFlag;
+extern bool g_UsrSystemPreFullnessOkFlag;
+extern bool g_UsrSystemPreFullnessSendFlag;
+extern bool g_UsrSystemFullAlarmLimitFlag;
+extern bool g_UsrSystemSendDecideDataFlag;
+extern bool g_UsrSystemGsmModuleInitialFlag;
+extern bool g_UsrSystemGsmModuleMqttInitialFlag;
+extern bool g_UsrSystemGsmErrorFlag;
+extern bool g_UsrSystemLedInitialFlag;
+extern bool g_UsrSystemPeriodicDataSendFlag;
+extern bool g_UsrSystemWakeUpFromRtcCheckDataFlag;
+extern bool g_UsrSytemAccelometerInterruptDetectedFlag;
+extern bool g_sleepFlag;
+
+extern uint8_t g_UsrSystemCoverLastStatus;
+
+EDeviceSendDataAlarmProcess g_DeviceSendType;
+
+uint8_t m_AlarmGroupBits = 0;
+
+bool g_UsrProcessReadingStartFlag = false;
+
+// Sleep flags 
+bool g_sleepFlag = false;
+
+// ayberk
+int isTankFullLast = 0;
+uint8_t fullnessLimitExdeed = 2;
+uint8_t isTankCleanedChanged = 0;
+S_AYBERK_ALARM_TYPE g_sUsrProcessAyberkAlarmType;
+
+// Alarm ıntervals
+extern uint8_t g_UsrSystemLastAlarmsTime;
+extern uint8_t g_UsrsystemAlarmsIntervalTime; 
+
+int counter = 0;
+int timestampp = 0;
+int sendType = 0;
+char *mcu = "STM32L051";
+float temp, charge = 0;
+char *version = "8.4.1";
+uint8_t lat, lon = 0;
+int rawData = 0;
+
+uint8_t m_JsonDataBuf[1024];
+
+_io void ClearFlagProc(void);
+_io void PrepareJsonDataProc(void);
+
+void UsrProcessGsmModuleOpenProcess(void)
+{
+    UsrSystemGsmPeripheralInitial();
+    if(g_UsrSystemGsmModuleInitialFlag)
+    {
+        //HAL_Delay(10000);
+        if (UL_GsmModuleCheck())
+        {
+            __logsi("Gsm module ok");
+            g_UsrSystemGsmErrorFlag = false;
+        }
+        else
+        {
+            __logse("Gsm Module error");
+            g_UsrSystemGsmErrorFlag = true;
+        }
+        
+        if (UL_GsmModuleGetInfo(&g_sUsrSystemGsmModuleInfo))
+        {
+            __logsi("Gsm : %s", g_sUsrSystemGsmModuleInfo.iccidBuf);
+            __logsi("Gsm : %s", g_sUsrSystemGsmModuleInfo.imeiBuf);
+            __logsi("Gsm : %s", g_sUsrSystemGsmModuleInfo.moduleInfoBuf);
+            __logsi("Gsm : %d", g_sUsrSystemGsmModuleInfo.signal);    
+            
+            if (UL_GsmModuleMqttInitial((const S_GSM_MQTT_CONNECTION_PARAMETERS *)&g_sUsrSystemGsmMqttInitialParameters))
+            {
+                __logsi("Mqtt initial ok");  
+                g_UsrSystemGsmModuleMqttInitialFlag = true;
+                if (!UL_GsmModuleMqttSubcribeTopic("topic1eren", 0))
+                {
+                    __logse("Subcribe error");
+                }
+                
+                PrepareJsonDataProc();
+                UL_GsmModuleMqttPublishTopic("topic1eren", "GsmOpened", 0, 0);
+                UL_GsmModuleMqttPublishTopic("topic1eren", m_JsonDataBuf, 0, 0);
+                _RGB_LED_GREEN_CONTROL(enableLedPeripheral);
+                _RGB_LED_RED_CONTROL(disableLedPeripheral);
+            }
+            else
+            {
+                __logse("Mqtt error");
+                g_UsrSystemGsmModuleMqttInitialFlag = false;
+            }
+            //UL_GsmModuleReadFile("test.txt",0, 30, "tevfik");
+            //UL_GsmModuleFtpFileDownload(&g_sUsrSystemGsmFtpParameters);
+            UL_GsmModuleMqttGeneral();
+        }
+        g_UsrSystemGsmModuleInitialFlag = false;
+    }
+
+    if(!g_UsrSystemGsmModuleInitialFlag)
+    {
+      UL_GsmModuleMqttPublishTopic("topic1eren", "GsmClosed", 0, 0);
+      _RGB_LED_GREEN_CONTROL(disableLedPeripheral);
+      _RGB_LED_RED_CONTROL(enableLedPeripheral);
+      UL_GsmModuleMqttClosed();
+      UL_GsmModulePeripheral(disableGsmPeripheral);
+      UL_GsmModuleHardwareReset();
+    }
+    
+}
+
+
+void UsrProcessAlarmProcess(void)
+{
+    uint32_t currentTime = UL_RtcGetTs();
+    if((currentTime - g_UsrSystemLastAlarmsTime) >= g_UsrsystemAlarmsIntervalTime)
+    {
+        g_UsrSystemLastAlarmsTime = currentTime;
+        if(g_UsrProcessReadingStartFlag)
+        {
+            if(g_sAllSensorValues.distancedataokflag && (!g_sAllSensorValues.distancesensorerrorflag) ) // data alindi ve hatasiz
+            {
+                isTankFullLast = g_sUsrProcessAyberkAlarmType.isTankFull;
+                if(g_sAllSensorValues.distancevalue <= g_sNvsDeviceInfo.fullAlarmLimit)          /// TANK DOLU
+                {
+                    g_DeviceSendType = enableFullAlarmLimitSendDecideData;
+
+                    g_sUsrProcessAyberkAlarmType.isTankFull = 1;
+                    m_AlarmGroupBits |= 0x02;
+                }   
+                else                                                                                                    /// TANK DOLU DEGIL
+                {
+                    g_DeviceSendType = disableFullAlarmLimitSendDecideData;
+
+                    g_sUsrProcessAyberkAlarmType.isTankFull = 0;
+                    m_AlarmGroupBits &= ~(0x02);        
+                }
+
+                if(isTankFullLast != g_sUsrProcessAyberkAlarmType.isTankFull)                                                                      /// ARADA DEGISIM OLURSA ALARM GITSIN
+                {
+                    g_sAllSensorValues.alarmeventgroup = m_AlarmGroupBits; // sensor.c de struct isTankFullr 
+                    
+                    isTankCleanedChanged = 1;
+                    g_UsrSystemSendDecideDataFlag = true;   // Mqtt den gönder
+                }
+                else
+                {
+                    isTankCleanedChanged = 0;
+                }
+
+                /// boşaltıldı ihtimali
+                if(g_sAllSensorValues.distancevalue <= g_sNvsDeviceInfo.fullnessAlarmLimit)       /// FULLNESS UZERINE CIKILDI
+                {
+                    g_sUsrProcessAyberkAlarmType.isTankCleaned = 0;
+                    m_AlarmGroupBits &= ~(0x01);
+                    
+                    fullnessLimitExdeed = 1; 
+                }
+
+                if(fullnessLimitExdeed)                                                                              
+                {
+                    if(g_sAllSensorValues.distancevalue > (g_sNvsDeviceInfo.depthAlarmLimit * (100 - g_sNvsDeviceInfo.toleranceValue) / 100) )  /// SONRADAN ALTINA INILDI
+                    {
+                        g_sUsrProcessAyberkAlarmType.isTankCleaned = 1;                                                                                //// BİR SONRAKİ İTERASYONA KADAR KALACAK BU
+                        m_AlarmGroupBits |= (0x01);
+                        g_DeviceSendType = disablePreFullnessAlarmSendDecideData;
+                        g_UsrSystemSendDecideDataFlag = true;   // Mqtt den gönder
+
+                        fullnessLimitExdeed = 0;
+                    }
+                }
+            }
+
+            // atama burada yapılıyor, diğer dosyalarda sadece kıyaslama yapılsın
+            // aynı değilse veri gönderilmesin gsm'den 
+            if(g_sAllSensorValues.halleffectalarmstatus)      /// tum kapaklar kapaliysa 0 olacaktir ve atlanacaktir
+            {
+                if(g_UsrSystemCoverLastStatus != g_sAllSensorValues.halleffectalarmstatus)
+                {
+                    g_UsrSystemCoverLastStatus = g_sAllSensorValues.halleffectalarmstatus; 
+                                                                                                             
+                    g_UsrSystemSendDecideDataFlag = true;          /// DUZELTTIM VE DUZENLEDIM BURALARI
+                }            
+            }
+
+            // if(!g_UsrSystemSendDecideDataFlag)
+            // {
+            //     ClearFlagProc();
+            //     g_sleepFlag = 1;  // UsrSleepGeneral();
+            //     // Sleep e doğru gittiğinden gsm de kapatılacaktır ve veri gönderlmeyecektir.
+            //     // Gsm Kapat disable peripheral
+            // }
+            // else
+            // {
+            //     // Open Gsm
+                
+            // }
+
+            if(g_UsrSystemSendDecideDataFlag)
+            {
+                g_sAllSensorValues.alarmeventgroup       = m_AlarmGroupBits;
+                g_sAllSensorValues.halleffectalarmstatus = g_UsrSystemCoverLastStatus;
+                UsrProcessGsmModuleOpenProcess();
+                g_UsrSystemSendDecideDataFlag = false;
+            }
+                
+        }
+        else
+        {
+            ClearFlagProc();
+            // g_sleepFlag = 1; // UsrSleepGeneral();
+            // Sleep e doğru gittiğinden gsm de kapatılacaktır ve veri gönderlmeyecektir.
+        }
+
+        UsrSystemWatchdogRefresh();
+    }
+   
+                      
+}
+
+void UsrProcessLedOpenAnimation(void)
+{
+    // device Status bayrağını düşün
+    if(UL_LedInitial(&g_sUsrSystemLedParameters))
+    {
+        UL_LedPeripheral(enableLedPeripheral);
+        g_UsrSystemLedInitialFlag = true;
+    }
+
+    if(g_UsrSystemLedInitialFlag)
+    {
+        UL_LedOpenAnimation(250); // RGB blink with timeout
+        g_UsrSystemLedInitialFlag = false;
+    }
+
+}
+
+
+void UsrProcessDecideFirstState(void)
+{
+    if(g_sAllSensorValues.halleffectalarmstatus)
+    {
+        g_UsrSystemCoverLastStatus = g_sAllSensorValues.halleffectalarmstatus;
+        g_sAllSensorValues.eWakeuptype = wakeupFromCoverAlarm;
+    }
+    else
+    {
+        g_sAllSensorValues.eWakeuptype = wakeupFromDisableStatus;
+
+        g_UsrProcessReadingStartFlag = true;
+        // g_sleepFlag = true;
+    }
+}
+
+
+_io void PrepareJsonDataProc(void)
+{
+    //sprintf((char*)m_JsonDataBuf, "{\"deviceReset\":%d,\"ts\":%d,\"sendType\":%d,\"mcu\":%s,\"module\":%s,\"sigq\":%d,\"ccid\":%s,\"temp\":%f,\"charge\":%f,\"fireAlarm\":%s,\"fullAlarm\":%s,\"coverAlarm\":%s,\"batteryCoverAlarm\":%s,\"fullnessAlarm\":%s,\"version\":%s,\"lat\":%d,\"lon\":%d,\"rawData\":%d}",
+    sprintf((char*)m_JsonDataBuf, "{\"deviceReset\":%d,\"ts\":%d,\"sendType\":%d,\"mcu\":%s,\"module\":%s,\"sigq\":%d,\"ccid\":%s,\"temp\":%.3f,\"charge\":%.3f,\"fireAlarm\":%s,\"fullAlarm\":%s,\"coverAlarm\":%s,\"batteryCoverAlarm\":%s,\"rawData\":%d}", 
+    counter, 
+    g_sAllSensorValues.rtc, 
+    g_DeviceSendType,
+    mcu,
+    g_sUsrSystemGsmModuleInfo.moduleInfoBuf,
+    g_sUsrSystemGsmModuleInfo.signal, 
+    g_sUsrSystemGsmModuleInfo.iccidBuf,
+    g_sAllSensorValues.tempvalue,
+    g_sAllSensorValues.batteryvoltage,
+    ((g_sAllSensorValues.alarmeventgroup & 0x01) ? "true" : "false"),
+    ((g_sAllSensorValues.alarmeventgroup & 0x02) ? "true" : "false"),
+    ((g_sAllSensorValues.halleffectalarmstatus & 0x01) ? "true" : "false"),
+    ((g_sAllSensorValues.halleffectalarmstatus & 0x02) ? "true" : "false"),
+    //version
+    //lat,
+    //lon,
+    rawData);
+}
+
+
+_io void ClearFlagProc(void)
+{
+    g_UsrSystemPreFullnessOkFlag = false;
+    g_UsrSystemPreFullnessSendFlag = false;
+    g_UsrSystemSendDecideDataFlag = false;
+    g_UsrSystemGsmModuleInitialFlag = false; // gsm flag
+    g_UsrSystemGsmErrorFlag = false;
+    g_UsrSystemLedInitialFlag = false;
+    g_UsrSystemPeriodicDataSendFlag = false;
+    g_UsrSystemWakeUpFromRtcCheckDataFlag = false;
+    g_UsrSytemAccelometerInterruptDetectedFlag = false;   
+}
+
+
+
+
+
+
+

@@ -1,0 +1,22 @@
+# ninja log v5
+1	57	7107689625504663	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Application/EWARM/startup_stm32l051xx.o	da9b197cf06a14be
+13	331	7107689628151876	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Application/User/Core/stm32l0xx_it.o	cbc1a1fe2570cad8
+18	376	7107689628597706	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Application/User/Core/main.o	8486e4d1cbe435eb
+7	426	7107689628835091	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Application/User/Core/stm32l0xx_hal_msp.o	960d3da7feb413b9
+441	627	7107689631123186	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/CMSIS/system_stm32l0xx.o	930eff2c531150dd
+345	669	7107689631404023	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_cortex.o	5e2e1cc57dcda138
+392	701	7107689631579531	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal.o	f909dbcd42ee2184
+421	834	7107689633184966	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_dma.o	d8f9b5d27314e940
+685	942	7107689634267008	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_flash_ramfunc.o	190abf78d547034f
+645	1037	7107689635188886	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_gpio.o	2171981bf1d102b2
+851	1187	7107689636709607	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_flash.o	2cba51c8c2cc8599
+959	1277	7107689637636327	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_exti.o	20a23877ce2b2066
+1203	1441	7107689639265752	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_tim.o	ccafe2dd9188d91d
+1051	1478	7107689639581387	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_flash_ex.o	8663c26f2931cc0e
+1292	1569	7107689640548446	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_i2c_ex.o	4d1bb05e44c06b2c
+1497	1740	7107689642238087	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_pwr_ex.o	3bcdcc9aa2f85868
+1458	1773	7107689642318098	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_pwr.o	37f95093878f3e30
+1584	1961	7107689644454061	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_rcc_ex.o	c56cfa920825ca42
+1789	2014	7107689645002592	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_tim_ex.o	8a0c74e51e0dfaa9
+1754	2391	7107689648748632	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_rcc.o	2c5de912a0a3c00a
+716	2873	7107689653552034	C:/Projects/Bitbucket/Universal/CurrentFirmwares/Embedded/STM32-L051R8-M66-BOOT/EWARM/STM32-L051R8-M66-BOOT/Obj/Drivers/STM32L0xx_HAL_Driver/stm32l0xx_hal_i2c.o	8e87b0e98fe282ff

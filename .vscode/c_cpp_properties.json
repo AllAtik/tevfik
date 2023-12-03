@@ -1,0 +1,23 @@
+{
+  "configurations": [
+    {
+      "name": "windows-gcc-x86",
+      "intelliSenseMode": "windows-gcc-x86",
+      "compilerPath": "C:/MinGW/bin/gcc.exe",
+      "cStandard": "${default}",
+      "cppStandard": "${default}",
+      "includePath": [
+        "${workspaceFolder}/**"
+      ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}",
+          "${workspaceFolder}/RawLibraries",
+          "${workspaceFolder}/ApplicationLayer",
+          "${workspaceFolder}/STM32-L051R8-M65-APP/**"
+        ]
+      }
+    }
+  ],
+  "version": 4
+}
